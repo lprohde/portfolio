@@ -1,0 +1,194 @@
+"CUSTOM_CORRECTION", "SELECTED_CORRECTION", "DOCUMENT_TYPE", "SEVERITY_LEVEL",
+					
+"BEFORE/AFTER_TX", "APPROVAL_ORDER", "VIOLATION", "POSSIBLE_VIOLA TION",
+					
+"CLINICALLY_SIGNIFICANT", "SIGNIFICANT", "MISADMINISTRATION", "RECORDABLE_EVENT",
+					
+"METHOD_OF_TREATMENT", "USUAL_CORRECTION_ROLE", "ROLE_NAME", "ERROR", "USERNAME",
+					
+"NAME", "ACTION", "STATUS", "ROLE_CODES")]
+ names(master) <- c("CATLEVEL", "DESCRIPTION (ERROR_LEVEL_NAME)", "DESCR_IF_MISC",
+					
+"DESCRIPTION (ERROR_DESCRIPTION)", "IDENTIFIED_BY", "MODIFIED_BY",
+					
+"AFFECTED_TREATMENT", "CORRECTED", "WHYNOTCORRECTED", "TX_INTENT", "TX_METHOD",
+					
+"DEV_TYPE", "ASSIGNED_USER", "ASSIGNED_ROLE", "STAGE", "ROLE",
+					
+"DESCRIPTION (APPROVING_DESCRIPTION)", "APPROVER_BY", "ISARCHIVED",
+					
+"DESCRIPTION (CUSTOM_CORRECTION)", "DESCRIPTION (SELECTED_CORRECTION)", "DOC_TYPE",
+					
+"SL", "IS_POST", "ROLE_CODES (APPROVAL_ORDER)", "REG_VIOLATION",
+					
+"POSSIBLE_VIOLATION", "CLIN_SIGNIFICANT", "SIGNIFICANT_ERROR", "MISADMIN",
+					
+"RECORDABLE", "INTENT_METHOD_APPLICABLE", "CORRECTION_ROLES", "RNAME", "MOREINFO",
+					
+"USERID", "GROUPID", "ACTION", "STATUS", "ROLE_CODES")
+				
+			
+			
+				
+					
+19
+				
+			
+		
+		
+			
+				
+					
+############################################### Exporting final data set write.csv(master,"/Users/leahrohde/Documents/Classes/st495/Project/Master.csv", row.names = FALSE)
+					
+#STAGE2
+ ## correct data and begin tokenization process
+					
+########################## Removes punctuation
+					
+master2 <- master %>% mutate(across(`DESCRIPTION (ERROR_DESCRIPTION)`, ~gsub("[[:punct:]]", "", .x)))
+					
+############################################## Converts to lowercase
+					
+master2$`DESCRIPTION (ERROR_DESCRIPTION)` = tolower(master$`DESCRIPTION (ERROR_DESCRIPTION)`)
+					
+######################## Splits observations into 3 larger categories for(i in 1:293) {
+					
+if(master2$`DESCRIPTION (ERROR_LEVEL_NAME)`[i] == 'Billing' || master2$`DESCRIPTION (ERROR_LEVEL_NAME)`[i] == 'Quality Assurance' || master2$`DESCRIPTION (ERROR_LEVEL_NAME)`[i] == 'Radiation Safety') {
+					
+master2$EVENT_CAT[i] = 'Standards'
+ } else if(master2$`DESCRIPTION (ERROR_LEVEL_NAME)`[i] == 'Computer Tx Planning' ||
+					
+master2$`DESCRIPTION (ERROR_LEVEL_NAME)`[i] == 'Dose Calculations' ||
+				
+			
+			
+				
+					
+20
+				
+			
+		
+		
+			
+				
+					
+master2$`DESCRIPTION (ERROR_LEVEL_NAME)`[i] == 'R & V') { master2$EVENT_CAT[i] = 'Treatment and treatment preparations'
+					
+} else if(master2$`DESCRIPTION (ERROR_LEVEL_NAME)`[i] == 'Registration' || master2$`DESCRIPTION (ERROR_LEVEL_NAME)`[i] == 'Scheduling' || master2$`DESCRIPTION (ERROR_LEVEL_NAME)`[i] == 'Patient Docs/Notes' || master2$`DESCRIPTION (ERROR_LEVEL_NAME)`[i] == 'Portal Images') {
+					
+master2$EVENT_CAT[i] = 'Administration' }
+					
+}
+					
+############ tokenizing the description for ngrams = 1, 2, 3
+					
+errors <- tibble(txt = master2$`DESCRIPTION (ERROR_DESCRIPTION)`) errors %>% unnest_tokens(word, txt, token = "ngrams", n = 1)
+					
+master2_tibble <- tibble(EVENT_CAT = master2$EVENT_CAT,
+ ERROR_DESCRIPTION = master2$`DESCRIPTION (ERROR_DESCRIPTION)`)
+					
+master2_words <- master2_tibble %>%
+ unnest_tokens(word, ERROR_DESCRIPTION, token = "ngrams", n = 3, n_min = 1) %>% count(EVENT_CAT, word, sort = TRUE) %>%
+ ungroup()
+				
+			
+			
+				
+					
+21
+				
+			
+		
+		
+			
+				
+					
+total_words <- master2_words %>% group_by(EVENT_CAT) %>% summarize(total = sum(n))
+					
+master2_words <- left_join(master2_words, total_words) master2_words
+					
+freq_by_rank <- master2_words %>% group_by(EVENT_CAT) %>% mutate(rank = row_number(),
+					
+`term frequency` = n/total) freq_by_rank
+					
+master2_words <- master2_words %>% bind_tf_idf(word, EVENT_CAT, n)
+					
+master2_words
+					
+#creating corpus
+ master2corpus <- VCorpus(VectorSource(master2_tibble$ERROR_DESCRIPTION))
+					
+#LSA
+					
+tdm = TermDocumentMatrix(master2corpus, control = list(weighting = function(x) weightTfIdf(x, normalize = TRUE), wordLengths=c(2,Inf)))
+					
+lsaSpace <- lsa(tdm) # create LSA space
+				
+			
+			
+				
+					
+22
+				
+			
+		
+		
+			
+				
+					
+lsak = lsaSpace$dk #Docs decomposed to k dimensions dim(lsak)
+ lsaSpace$sk # these are like the variance plot(lsaSpace$sk) # scree plot
+					
+#dtm
+ dtm = DocumentTermMatrix(master2corpus, control = list(
+					
+weighting = function(x) weightTfIdf(x, normalize = TRUE),stopwords=TRUE)) dtm
+					
+#removing sparse terms
+ dtm2 = removeSparseTerms(dtm, 0.8)
+ dtm2
+ #creating dtm matrix
+ matrix = as.matrix(dtm2)
+ eventlabels = master2_tibble$EVENT_CAT
+ data.eventcat = data.frame(eventlabels, matrix) data.eventcat$eventlabels = as.factor(data.eventcat$eventlabels) table(data.eventcat$eventlabels)
+					
+#LSA
+					
+tdm = TermDocumentMatrix(master2corpus, control = list(weighting = function(x) weightTfIdf(x, normalize = TRUE), wordLengths=c(2,Inf)))
+					
+lsaSpace <- lsa(tdm) # create LSA space lsak = lsaSpace$dk # dimension reduction
+				
+			
+			
+				
+					
+23
+				
+			
+		
+		
+			
+				
+					
+dim(lsak)
+ lsaSpace$sk # like the variance plot(lsaSpace$sk) # plot
+					
+#support vector
+ library(e1071)
+ # ~70% of data for training, it is rounded to the nearest whole number train = c(sample(88, 62), 88+sample(97, 68), 185+sample(108, 76)) data.train = data.eventcat[train,]
+ data.test = data.eventcat[-train,]
+					
+#predictions and summary
+ svm.model = svm(eventlabels ~. , data = data.train) svm.predict = predict(svm.model, data.test[,-1])
+					
+table(svm.predict, data.test$eventlabels) mean(svm.predict != data.test$eventlabels) summary(svm.predict)
+				
+			
+			
+				
+					
+24 
+				
+			
+		
