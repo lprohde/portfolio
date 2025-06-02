@@ -1,6 +1,6 @@
 # portfolio
 
-# Classifying Medical Errors
+# Classifying Medical Errors Using Natural Language Processing
   Using natural language processing to categorize medical errors via free-text physician notes using tf-idf, LSA, and SVM. Data supplied by RadPhysics. Code at end of document, done in R.
 
 # Mean Annual Temperature Prediction using Bayes (predictingMAT)
